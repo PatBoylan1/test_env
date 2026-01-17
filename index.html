@@ -728,7 +728,8 @@
                     signals.titleStart = title.startsWith(term);
                 }
 
-                // Signal 2: For multi-word searches, require sequential/phrase matching                    const wordsMatch = (searchWord, targetWord) => {
+                // Signal 2: For multi-word searches, require sequential/phrase matching
+                    const wordsMatch = (searchWord, targetWord) => {
                         // Exact match
                         if (searchWord === targetWord) {
                             return { match: true, score: 100 };
