@@ -386,6 +386,50 @@
         .custom-notification.fade-out {
             animation: fadeOut 0.3s ease-in-out;
         }
+
+        /* Contenteditable placeholder */
+        .search-input:empty:before {
+            content: attr(data-placeholder);
+            color: #888888;
+            pointer-events: none;
+        }
+
+        .search-input:focus:before {
+            content: '';
+        }
+
+        /* Auto-complete styling */
+        .autocomplete-grey {
+            color: #888888;
+        }
+
+        .autocomplete-white {
+            color: #ffffff;
+        }
+
+        .artist-button {
+            display: inline-block;
+            padding: 2px 8px;
+            margin: 0 3px;
+            border: 1px solid #666666;
+            border-radius: 4px;
+            background-color: #1a1a1a;
+            color: #888888;
+            cursor: pointer;
+            box-shadow: 0 1px 2px rgba(0,0,0,0.3);
+            transition: all 0.2s ease;
+        }
+
+        .artist-button:hover {
+            background-color: #2a2a2a;
+            border-color: #888888;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.4);
+        }
+
+        .artist-button:active {
+            transform: translateY(1px);
+            box-shadow: 0 1px 2px rgba(0,0,0,0.2);
+        }
     </style>
 </head>
 <body>
@@ -398,7 +442,7 @@
 
     <!-- Search Bar -->
     <div class="search-container" id="searchContainer">
-        <input type="text" class="search-input" id="searchInput" placeholder="Search for song">
+        <div contenteditable="true" class="search-input" id="searchInput" data-placeholder="Search for song" data-plain-text="" spellcheck="true"></div>
         <button class="search-clear" id="searchClear" style="display: none;">✕</button>
     </div>
 
@@ -445,6 +489,285 @@
         let allSongs = [];
         let currentFilter = 'all';
         let currentSearchTerm = '';
+
+        // ===== AUTO-COMPLETE MODULE =====
+        // Auto-complete module for Patrick Boylan's Song List
+        // This module handles inline auto-complete with multi-artist selection
+        
+        let autocompleteSongs = [];
+        let autocompleteState = {
+            active: false,
+            suggestion: null,
+            userText: '',
+            acceptedTitle: '',
+            acceptedArtist: '',
+            titleCompleted: false
+        };
+        
+        // Load autocomplete database
+        async function loadAutocomplete() {
+            try {
+                const response = await fetch('piano_bar_songs_autocomplete.json');
+                autocompleteSongs = await response.json();
+                console.log('Autocomplete database loaded:', autocompleteSongs.length, 'songs');
+            } catch (error) {
+                console.error('Failed to load autocomplete database:', error);
+            }
+        }
+        
+        // Find best autocomplete match
+        function findBestAutocompleteMatch(searchTerm) {
+            if (!searchTerm || searchTerm.trim().length < 3) {
+                return null;
+            }
+        
+            const results = fuzzySearch(searchTerm, autocompleteSongs);
+            return results.length > 0 ? results[0] : null;
+        }
+        
+        // Find where user's text appears in the title
+        function findMatchPosition(userText, title) {
+            const userLower = normalizeText(userText.toLowerCase());
+            const titleLower = normalizeText(title.toLowerCase());
+            
+            // Try exact substring match first
+            const exactIndex = titleLower.indexOf(userLower);
+            if (exactIndex !== -1) {
+                return {
+                    start: exactIndex,
+                    end: exactIndex + userLower.length,
+                    matchedText: title.substring(exactIndex, exactIndex + userLower.length)
+                };
+            }
+        
+            // Try word-by-word fuzzy match
+            const userWords = userLower.split(/\s+/);
+            const titleWords = title.split(/\s+/);
+            
+            for (let i = 0; i <= titleWords.length - userWords.length; i++) {
+                let allMatch = true;
+                let matchScore = 0;
+                
+                for (let j = 0; j < userWords.length; j++) {
+                    const titleWord = normalizeText(titleWords[i + j].toLowerCase());
+                    const userWord = userWords[j];
+                    
+                    if (titleWord.startsWith(userWord)) {
+                        matchScore++;
+                    } else if (levenshteinDistance(userWord, titleWord) <= 1) {
+                        matchScore++;
+                    } else {
+                        allMatch = false;
+                        break;
+                    }
+                }
+                
+                if (allMatch && matchScore >= userWords.length) {
+                    // Calculate character positions
+                    const wordsBeforeMatch = titleWords.slice(0, i);
+                    const matchedWords = titleWords.slice(i, i + userWords.length);
+                    
+                    const startPos = wordsBeforeMatch.join(' ').length + (wordsBeforeMatch.length > 0 ? 1 : 0);
+                    const matchLength = matchedWords.join(' ').length;
+                    
+                    return {
+                        start: startPos,
+                        end: startPos + matchLength,
+                        matchedText: title.substring(startPos, startPos + matchLength)
+                    };
+                }
+            }
+        
+            return null;
+        }
+        
+        // Render autocomplete in contenteditable div
+        function renderAutocomplete(userText, suggestion) {
+            const searchInput = document.getElementById('searchInput');
+            const matchPos = findMatchPosition(userText, suggestion.title);
+            
+            let html = '';
+            
+            if (!matchPos) {
+                // Fallback: just show user text + rest of title
+                html += `<span class="autocomplete-white">${escapeHtml(userText)}</span>`;
+                html += `<span class="autocomplete-grey">${escapeHtml(suggestion.title.substring(userText.length))}</span>`;
+            } else {
+                // Show: [grey before] [white matched] [grey after]
+                const before = suggestion.title.substring(0, matchPos.start);
+                const matched = matchPos.matchedText;
+                const after = suggestion.title.substring(matchPos.end);
+        
+                if (before) {
+                    html += `<span class="autocomplete-grey">${escapeHtml(before)}</span>`;
+                }
+                html += `<span class="autocomplete-white">${escapeHtml(matched)}</span>`;
+                if (after) {
+                    html += `<span class="autocomplete-grey">${escapeHtml(after)}</span>`;
+                }
+            }
+            
+            html += '<span class="autocomplete-grey"> by </span>';
+            html += renderArtists(suggestion.artist);
+        
+            searchInput.innerHTML = html;
+            
+            // Store state
+            autocompleteState.userText = userText;
+            autocompleteState.suggestion = suggestion;
+            autocompleteState.active = true;
+            autocompleteState.titleCompleted = false;
+            
+            // Set cursor position after user's text
+            setTimeout(() => {
+                const whiteSpan = searchInput.querySelector('.autocomplete-white');
+                if (whiteSpan) {
+                    setCursorAfterElement(whiteSpan);
+                }
+            }, 0);
+        }
+        
+        // Render artist buttons or plain text
+        function renderArtists(artists) {
+            if (typeof artists === 'string') {
+                return `<span class="autocomplete-grey">${escapeHtml(artists)}</span>`;
+            } else if (Array.isArray(artists)) {
+                return artists.map((artist, index) => {
+                    const separator = index < artists.length - 1 ? '<span class="autocomplete-grey"> or </span>' : '';
+                    return `<span class="artist-button" data-artist="${escapeHtml(artist)}">${escapeHtml(artist)}</span>${separator}`;
+                }).join('');
+            }
+            return '';
+        }
+        
+        // Escape HTML to prevent XSS
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+        
+        // Set cursor after an element
+        function setCursorAfterElement(element) {
+            const range = document.createRange();
+            const sel = window.getSelection();
+            
+            try {
+                range.setStartAfter(element);
+                range.collapse(true);
+                sel.removeAllRanges();
+                sel.addRange(range);
+            } catch (e) {
+                console.error('Cursor positioning error:', e);
+            }
+        }
+        
+        // Get plain text from contenteditable (ignoring HTML)
+        function getPlainText(element) {
+            return (element.textContent || element.innerText || '').trim();
+        }
+        
+        // Check if cursor is after autocomplete text
+        function isCursorAfterAutocomplete() {
+            const sel = window.getSelection();
+            if (!sel.rangeCount) return false;
+            
+            const range = sel.getRangeAt(0);
+            const searchInput = document.getElementById('searchInput');
+            
+            // Get cursor position in text
+            const preCaretRange = range.cloneRange();
+            preCaretRange.selectNodeContents(searchInput);
+            preCaretRange.setEnd(range.endContainer, range.endOffset);
+            const cursorPosition = preCaretRange.toString().length;
+            
+            // Get length of user's typed text
+            const whiteSpan = searchInput.querySelector('.autocomplete-white');
+            if (!whiteSpan) return false;
+            
+            const userTextLength = whiteSpan.textContent.length;
+            
+            // Cursor should be after user's text
+            return cursorPosition >= userTextLength;
+        }
+        
+        // Accept autocomplete (Enter or click after text)
+        function acceptAutocomplete(selectedArtist = null) {
+            if (!autocompleteState.active || !autocompleteState.suggestion) {
+                return false;
+            }
+        
+            const suggestion = autocompleteState.suggestion;
+            const artists = Array.isArray(suggestion.artist) ? suggestion.artist : [suggestion.artist];
+        
+            if (selectedArtist) {
+                // Artist button was clicked
+                autocompleteState.acceptedTitle = suggestion.title;
+                autocompleteState.acceptedArtist = selectedArtist;
+                autocompleteState.titleCompleted = true;
+                showBumpItMessage(suggestion.title, selectedArtist);
+                return true;
+            } else if (artists.length === 1) {
+                // Single artist - complete everything
+                autocompleteState.acceptedTitle = suggestion.title;
+                autocompleteState.acceptedArtist = artists[0];
+                autocompleteState.titleCompleted = true;
+                showBumpItMessage(suggestion.title, artists[0]);
+                return true;
+            } else {
+                // Multiple artists - complete title only, keep artist buttons
+                const searchInput = document.getElementById('searchInput');
+                let html = `<span class="autocomplete-white">${escapeHtml(suggestion.title)}</span>`;
+                html += '<span class="autocomplete-grey"> by </span>';
+                html += renderArtists(suggestion.artist);
+                searchInput.innerHTML = html;
+                
+                autocompleteState.titleCompleted = true;
+                // Keep autocomplete active, waiting for artist selection
+                return true;
+            }
+        }
+        
+        // Show "Bump it" message after acceptance
+        function showBumpItMessage(title, artist) {
+            const searchInput = document.getElementById('searchInput');
+            const fullText = title + ' by ' + artist;
+            
+            // Update search input to show completed text
+            searchInput.innerHTML = `<span class="autocomplete-white">${escapeHtml(fullText)}</span>`;
+            
+            // Show error message with bump button
+            const errorMessage = document.getElementById('errorMessage');
+            const searchTermSpan = document.getElementById('searchTerm');
+            const filterContext = document.getElementById('filterContext');
+        
+            searchTermSpan.textContent = fullText;
+            filterContext.textContent = '';
+            errorMessage.classList.add('show');
+        
+            // Hide all song results
+            const songRows = document.querySelectorAll('#songBody tr:not(.error-message):not(.spacer-row)');
+            songRows.forEach(row => row.style.display = 'none');
+            
+            // Clear autocomplete state
+            autocompleteState.active = false;
+        }
+        
+        // Clear autocomplete state
+        function clearAutocomplete() {
+            autocompleteState = {
+                active: false,
+                suggestion: null,
+                userText: '',
+                acceptedTitle: '',
+                acceptedArtist: '',
+                titleCompleted: false
+            };
+        }
+        
+        // Initialize autocomplete on page load
+        loadAutocomplete();
+        
 
         // Levenshtein Distance - measures similarity between two strings
         function levenshteinDistance(str1, str2) {
@@ -789,18 +1112,33 @@
             }
             // else: No search, "All" filter: show all songs (allSongs already set)
 
-            // Show error if no results
+            // Show error if no results OR trigger autocomplete
             if (currentSearchTerm && filteredSongs.length === 0) {
-                errorMessage.classList.add('show');
+                // Try autocomplete if not already active
+                if (!autocompleteState.active && currentSearchTerm.length >= 3) {
+                    const autocompleteSuggestion = findBestAutocompleteMatch(currentSearchTerm);
+                    
+                    if (autocompleteSuggestion) {
+                        // Show autocomplete in search field
+                        renderAutocomplete(currentSearchTerm, autocompleteSuggestion);
+                        errorMessage.classList.remove('show');
+                        return; // Don't show error message yet
+                    }
+                }
                 
-                // Different error message for Holiday filter
-                const errorText = document.getElementById('errorText');
-                const searchTermElement = document.getElementById('searchTerm');
-                
-                if (currentFilter.toLowerCase() === 'holiday') {
-                    errorText.innerHTML = `Pat doesn't know the holiday song<br><strong>${currentSearchTerm}</strong>`;
-                } else {
-                    errorText.innerHTML = `Pat doesn't know <strong id="searchTerm">${currentSearchTerm}</strong>`;
+                // No autocomplete match either - show error
+                if (!autocompleteState.active) {
+                    errorMessage.classList.add('show');
+                    
+                    // Different error message for Holiday filter
+                    const errorText = document.getElementById('errorText');
+                    const searchTermElement = document.getElementById('searchTerm');
+                    
+                    if (currentFilter.toLowerCase() === 'holiday') {
+                        errorText.innerHTML = `Pat doesn't know the holiday song<br><strong>${currentSearchTerm}</strong>`;
+                    } else {
+                        errorText.innerHTML = `Pat doesn't know <strong id="searchTerm">${currentSearchTerm}</strong>`;
+                    }
                 }
             } else {
                 errorMessage.classList.remove('show');
@@ -884,7 +1222,9 @@
         const searchClear = document.getElementById('searchClear');
         
         searchInput.addEventListener('input', function() {
-            currentSearchTerm = this.value;
+            // Get plain text from contenteditable
+            const plainText = getPlainText(this);
+            currentSearchTerm = plainText;
             
             // Show/hide clear button
             if (currentSearchTerm.length > 0) {
@@ -893,14 +1233,20 @@
                 searchClear.style.display = 'none';
             }
             
+            // Clear autocomplete if user is editing
+            if (autocompleteState.active && plainText !== autocompleteState.userText) {
+                clearAutocomplete();
+            }
+            
             renderSongs();
         });
         
         // Clear button click handler
         searchClear.addEventListener('click', function() {
-            searchInput.value = '';
+            searchInput.innerHTML = '';
             currentSearchTerm = '';
             searchClear.style.display = 'none';
+            clearAutocomplete();
             renderSongs();
             searchInput.focus();
         });
@@ -943,6 +1289,31 @@
                     console.log('Email failed to send:', error);
                 }
             );
+        });
+
+
+        // Enter key handler for autocomplete
+        searchInput.addEventListener('keydown', function(e) {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                
+                if (autocompleteState.active && isCursorAfterAutocomplete()) {
+                    acceptAutocomplete();
+                }
+            }
+        });
+
+        // Click handler for artist buttons
+        searchInput.addEventListener('click', function(e) {
+            if (e.target.classList.contains('artist-button')) {
+                const artist = e.target.getAttribute('data-artist');
+                acceptAutocomplete(artist);
+            } else if (autocompleteState.active && !autocompleteState.titleCompleted) {
+                // Click after autocomplete text
+                if (isCursorAfterAutocomplete()) {
+                    acceptAutocomplete();
+                }
+            }
         });
 
         // Load songs on page load
