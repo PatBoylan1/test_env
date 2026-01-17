@@ -389,16 +389,17 @@
 
         /* Autocomplete dropdown */
         .autocomplete-dropdown {
-            width: 100%;
+            position: absolute;
             background-color: #1a1a1a;
             border: 2px solid #ffffff;
             border-top: none;
             border-radius: 0 0 8px 8px;
             max-height: 300px;
             overflow-y: auto;
-            margin-bottom: 20px;
             display: none;
             box-sizing: border-box;
+            z-index: 1000;
+            /* Position set dynamically via JavaScript */
         }
 
         .autocomplete-dropdown.show {
@@ -462,8 +463,10 @@
     <div class="search-container" id="searchContainer">
         <input type="text" class="search-input" id="searchInput" placeholder="Search for song" spellcheck="true" autocomplete="off">
         <button class="search-clear" id="searchClear" style="display: none;">✕</button>
-        <div class="autocomplete-dropdown" id="autocompleteDropdown"></div>
     </div>
+
+    <!-- Autocomplete Dropdown (outside container for proper positioning) -->
+    <div class="autocomplete-dropdown" id="autocompleteDropdown"></div>
 
     <!-- Song Table -->
     <div class="songlist-wrapper">
@@ -564,6 +567,14 @@
             });
 
             dropdown.innerHTML = html;
+            
+            // Position dropdown directly below search input
+            const searchInput = document.getElementById('searchInput');
+            const rect = searchInput.getBoundingClientRect();
+            dropdown.style.top = (rect.bottom + window.scrollY) + 'px';
+            dropdown.style.left = rect.left + 'px';
+            dropdown.style.width = rect.width + 'px';
+            
             dropdown.classList.add('show');
             container.classList.add('has-autocomplete');
 
