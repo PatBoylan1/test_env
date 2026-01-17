@@ -820,7 +820,11 @@
 
             songs.forEach(song => {
                 const title = normalizeText(song.title.toLowerCase());
-                const artist = normalizeText(song.artist.toLowerCase());
+                // Handle artist as string or array
+                const artistText = Array.isArray(song.artist) 
+                    ? song.artist.join(' ').toLowerCase() 
+                    : song.artist.toLowerCase();
+                const artist = normalizeText(artistText);
                 const combined = title + ' ' + artist;
                 let score = 0;
                 let matchedWords = 0;
