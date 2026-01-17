@@ -728,17 +728,22 @@
                     signals.titleStart = title.startsWith(term);
                 }
 
-                // Signal 2: For multi-word searches, require sequential/phrase matching
-                const titleWords = title.split(/\s+/);
-                const artistWords = artist.split(/\s+/);
-                
-                // For multi-word searches, check if words appear in sequence (with typo tolerance)
-                if (searchWords.length > 1 && !signals.exactPhrase) {
-                    // Helper function to check if two words match (exact, prefix, or typo)
-                    const wordsMatch = (searchWord, targetWord) => {
-                        // Exact match or prefix match
-                        if (targetWord === searchWord || targetWord.startsWith(searchWord)) {
+                // Signal 2: For multi-word searches, require sequential/phrase matching                    const wordsMatch = (searchWord, targetWord) => {
+                        // Exact match
+                        if (searchWord === targetWord) {
                             return { match: true, score: 100 };
+                        }
+                        // Prefix match
+                        if (targetWord.startsWith(searchWord)) {
+                            return { match: true, score: 90 };
+                        }
+                        // Suffix match (e.g., "ing" matches "running")
+                        if (targetWord.endsWith(searchWord) && searchWord.length >= 3) {
+                            return { match: true, score: 100 };
+                        }
+                        // Partial word match (search word is contained in target)
+                        if (searchWord.length >= 3 && targetWord.includes(searchWord)) {
+                            return { match: true, score: 85 };
                         }
                         // Special rule for 1-character searches: match if char appears anywhere in word
                         if (searchWord.length === 1) {
