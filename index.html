@@ -394,12 +394,11 @@
             border: 2px solid #ffffff;
             border-top: none;
             border-radius: 0 0 8px 8px;
-            max-height: 300px;
-            overflow-y: auto;
             display: none;
             box-sizing: border-box;
             z-index: 1000;
             /* Position set dynamically via JavaScript */
+            /* No max-height or overflow - expands to fit all items */
         }
 
         .autocomplete-dropdown.show {
@@ -593,6 +592,9 @@
             const searchInput = document.getElementById('searchInput');
             const fullText = song.title + ' by ' + artist;
             
+            // Set flag to prevent input event from triggering renderSongs
+            autocompleteState.isSelecting = true;
+            
             // Fill input
             searchInput.value = fullText;
             currentSearchTerm = fullText;
@@ -606,6 +608,11 @@
             
             // Show bump it message
             showBumpItMessage(song.title, artist);
+            
+            // Reset flag after a short delay
+            setTimeout(() => {
+                autocompleteState.isSelecting = false;
+            }, 100);
         }
 
         // Hide autocomplete dropdown
@@ -1102,6 +1109,11 @@
         const searchClear = document.getElementById('searchClear');
         
         searchInput.addEventListener('input', function() {
+            // Skip if we're in the middle of selecting an autocomplete suggestion
+            if (autocompleteState.isSelecting) {
+                return;
+            }
+            
             currentSearchTerm = this.value;
             
             // Clear autocomplete state when user types
