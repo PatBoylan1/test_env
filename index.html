@@ -713,6 +713,10 @@
                     : song.artist.toLowerCase();
                 const artist = normalizeText(artistText);
                 const combined = title + ' ' + artist;
+                
+                const titleWords = title.split(/\s+/).filter(w => w.length > 0);
+                const artistWords = artist.split(/\s+/).filter(w => w.length > 0);
+                
                 let score = 0;
                 let matchedWords = 0;
                 let signals = {
