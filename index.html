@@ -651,6 +651,9 @@
         // Load autocomplete on page load
         loadAutocomplete();
 
+        // Load main song list on page load
+        loadSongs();
+
 
 
         // Levenshtein Distance - measures similarity between two strings
@@ -729,6 +732,7 @@
                 }
 
                 // Signal 2: For multi-word searches, require sequential/phrase matching
+                if (searchWords.length > 1) {
                     const wordsMatch = (searchWord, targetWord) => {
                         // Exact match
                         if (searchWord === targetWord) {
@@ -805,8 +809,8 @@
                                 matchedWords = searchWords.length;
                                 break;
                             }
-                        }
-                    }
+                        } // Closing brace for the for loop on line 796
+                    } // Closing brace for the else block on line 794
                     
                     signals.allWordsMatch = titleSequential || score >= 200;
                 } else {
